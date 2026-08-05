@@ -3,7 +3,7 @@
 # CI calls the SAME scripts developers run locally (packaging/build_dmg.sh and
 # build_windows.ps1); this file only provisions the toolchain (Node, Rust, a Python venv at
 # .venv with PyInstaller) and publishes the results.
-#
+# 
 # Triggers:
 #   - tag push `v*`  → builds all targets and attaches them to a DRAFT GitHub Release
 #                      (review, then publish by hand).
