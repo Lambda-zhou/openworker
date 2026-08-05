@@ -43,13 +43,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest # Apple Silicon
-            slug: macos-arm64
+          # - os: macos-latest # Apple Silicon
+          #   slug: macos-arm64
           # Intel macOS: macos-13 retired in Dec 2025; macos-15-intel replaced it and is
           # the LAST x86_64 image Actions will offer (available until Aug 2027). Builds
           # natively — the sidecar is a PyInstaller freeze, which cannot cross-compile.
-          - os: macos-15-intel
-            slug: macos-x64
+          # - os: macos-15-intel
+          #   slug: macos-x64
           - os: windows-latest
             slug: windows
     runs-on: ${{ matrix.os }}
