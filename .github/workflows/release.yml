@@ -1,35 +1,31 @@
-# Desktop release builds — macOS (.dmg, arm64 + Intel) and Windows (.msi + NSIS .exe).
+# Desktop release build — Windows only (.msi + NSIS .exe).
 #
-# CI calls the SAME scripts developers run locally (packaging/build_dmg.sh and
-# build_windows.ps1); this file only provisions the toolchain (Node, Rust, a Python venv at
+# CI calls the SAME script developers run locally (packaging/build_windows.ps1);
+# this file only provisions the toolchain (Node, Rust, a Python venv at
 # .venv with PyInstaller) and publishes the results.
 #
 # Triggers:
-#   - tag push `v*`  → builds all targets and attaches them to a DRAFT GitHub Release
-#                      (review, then publish by hand).
-#   - manual run     → builds and uploads workflow artifacts only (no release).
+#   - push to `master`  → builds Windows installers and uploads them as
+#                         workflow artifacts (no GitHub Release).
+#   - tag push `v*`     → builds Windows installers and attaches them to a
+#                         DRAFT GitHub Release (review, then publish by hand).
+#   - manual run        → builds and uploads workflow artifacts only (no release).
 #
-# Each installer is uploaded twice: once with its versioned name (archive) and once with a
-# stable name (OpenWorker-macos-arm64.dmg, …) so the website can link to
+# The installer is uploaded twice: once with its versioned name (archive) and once
+# with a stable name (OpenWorker-windows-setup.exe, OpenWorker-windows.msi) so the
+# website can link to
 #   github.com/<repo>/releases/latest/download/<stable-name>
 # and never need updating.
 #
-# macOS signing + notarization: Tauri's bundler handles both during `tauri build` when the
-# APPLE_* env vars are present (import cert → sign app + sidecar with hardened runtime →
-# notarize via notarytool → staple). Driven by repo secrets:
-#   APPLE_CERTIFICATE            base64 .p12 (Developer ID Application cert + key)
-#   APPLE_CERTIFICATE_PASSWORD   the .p12 export password
-#   APPLE_SIGNING_IDENTITY       e.g. "Developer ID Application: Name (TEAMID)"
-#   APPLE_API_KEY_CONTENT        base64 App Store Connect API .p8 (notarytool)
-#   APPLE_API_KEY                the API key id
-#   APPLE_API_ISSUER             the API issuer id
-# When the secrets are absent (forks, scratch runs) the build degrades to unsigned —
-# installable via `xattr -cr`. Windows remains unsigned (Authenticode is a later step).
+# Windows remains unsigned (Authenticode is a later step). Auto-update artifacts
+# (NSIS setup .exe + minisign .sig) are produced only when the updater signing
+# key secret is present.
 
 name: Release
 
 on:
   push:
+    branches: [master]
     tags: ["v*", "app-v*"]
   workflow_dispatch:
 
@@ -39,20 +35,7 @@ defaults:
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest # Apple Silicon
-            slug: macos-arm64
-          # Intel macOS: macos-13 retired in Dec 2025; macos-15-intel replaced it and is
-          # the LAST x86_64 image Actions will offer (available until Aug 2027). Builds
-          # natively — the sidecar is a PyInstaller freeze, which cannot cross-compile.
-          - os: macos-15-intel
-            slug: macos-x64
-          - os: windows-latest
-            slug: windows
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -73,49 +56,21 @@ jobs:
           python-version: "3.12"
 
       - name: Set up the sidecar venv (.venv)
-        # The build scripts expect a venv at .venv with the package + PyInstaller.
+        # The build script expects a venv at .venv with the package + PyInstaller.
         # typer/tzdata are build-time-only (PyInstaller walks mcp.cli, which needs typer;
         # tzdata ships zoneinfo for Windows). aisuite installs like any other dependency
         # (git-pinned in pyproject.toml).
         run: |
           python -m venv .venv
-          if [ "$RUNNER_OS" = "Windows" ]; then VPY=.venv/Scripts/python; else VPY=.venv/bin/python; fi
-          "$VPY" -m pip install --upgrade pip
-          "$VPY" -m pip install -e ".[bedrock]" pyinstaller typer tzdata
-          "$VPY" -c "import aisuite, coworker"  # fail fast if either import breaks
+          ".venv/Scripts/python" -m pip install --upgrade pip
+          ".venv/Scripts/python" -m pip install -e ".[bedrock]" pyinstaller typer tzdata
+          ".venv/Scripts/python" -c "import aisuite, coworker"  # fail fast if either import breaks
 
       - name: npm ci
         working-directory: surfaces/gui
         run: npm ci
 
-      - name: Build .dmg (macOS)
-        if: runner.os == 'macOS'
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          # Auto-update artifact signing (minisign, separate from Apple signing). Absent →
-          # the build script skips updater artifacts with a warning (fork/scratch runs).
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          # Unset empty APPLE_* vars so runs without secrets stay cleanly unsigned
-          # (Tauri treats a present-but-empty var as a config error).
-          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_API_KEY APPLE_API_ISSUER; do
-            [ -n "$(eval echo "\${$v:-}")" ] || unset "$v"
-          done
-          if [ -n "${APPLE_API_KEY_CONTENT:-}" ]; then
-            echo "$APPLE_API_KEY_CONTENT" | base64 -d > "$RUNNER_TEMP/AuthKey.p8"
-            export APPLE_API_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
-          fi
-          unset APPLE_API_KEY_CONTENT
-          bash packaging/build_dmg.sh
-
       - name: Build .msi + NSIS .exe (Windows)
-        if: runner.os == 'Windows'
         shell: pwsh
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -126,29 +81,19 @@ jobs:
         run: |
           mkdir -p out
           BUNDLE=surfaces/gui/src-tauri/target/release/bundle
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            cp "$BUNDLE"/nsis/*.exe out/
-            cp "$BUNDLE"/nsis/*.exe out/OpenWorker-windows-setup.exe
-            cp "$BUNDLE"/msi/*.msi out/
-            cp "$BUNDLE"/msi/*.msi out/OpenWorker-windows.msi
-            # Updater signature for the NSIS installer (present only when the updater key
-            # secret is configured). The .sig signs CONTENT, so the stable rename is safe.
-            SIG=$(ls "$BUNDLE"/nsis/*.exe.sig 2>/dev/null | head -1 || true)
-            [ -n "$SIG" ] && cp "$SIG" out/OpenWorker-windows-setup.exe.sig
-          else
-            cp "$BUNDLE"/dmg/*.dmg out/
-            cp "$BUNDLE"/dmg/*.dmg out/OpenWorker-${{ matrix.slug }}.dmg
-            # macOS updater artifact: the signed .app tarball the installed app swaps in.
-            if [ -f "$BUNDLE"/macos/OpenWorker.app.tar.gz ]; then
-              cp "$BUNDLE"/macos/OpenWorker.app.tar.gz out/OpenWorker-${{ matrix.slug }}.app.tar.gz
-              cp "$BUNDLE"/macos/OpenWorker.app.tar.gz.sig out/OpenWorker-${{ matrix.slug }}.app.tar.gz.sig
-            fi
-          fi
+          cp "$BUNDLE"/nsis/*.exe out/
+          cp "$BUNDLE"/nsis/*.exe out/OpenWorker-windows-setup.exe
+          cp "$BUNDLE"/msi/*.msi out/
+          cp "$BUNDLE"/msi/*.msi out/OpenWorker-windows.msi
+          # Updater signature for the NSIS installer (present only when the updater key
+          # secret is configured). The .sig signs CONTENT, so the stable rename is safe.
+          SIG=$(ls "$BUNDLE"/nsis/*.exe.sig 2>/dev/null | head -1 || true)
+          [ -n "$SIG" ] && cp "$SIG" out/OpenWorker-windows-setup.exe.sig
           ls -la out
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.slug }}
+          name: windows
           path: out/*
           if-no-files-found: error
 
