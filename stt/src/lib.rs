@@ -97,8 +97,9 @@ impl Dictation {
         let worker_recording = recording.clone();
         let worker_live = live.clone();
         thread::spawn(move || capture_worker(receiver, worker_recording, worker_live));
-        let model_path = model_dir.into().join(DEFAULT_MODEL_FILE);
-        let tokens_path = model_dir.into().join(DEFAULT_TOKENS_FILE);
+        let model_dir = model_dir.into();
+        let model_path = model_dir.join(DEFAULT_MODEL_FILE);
+        let tokens_path = model_dir.join(DEFAULT_TOKENS_FILE);
         Self {
             verified_marker_path: model_path.with_extension("bin.verified"),
             ready_marker_path: model_path.with_extension("bin.ready"),
@@ -639,14 +640,14 @@ fn transcribe(model_path: &Path, tokens_path: &Path, samples: &[f32]) -> Result<
         .ok_or_else(|| "The tokens file path is not valid text.".to_owned())?;
 
     let sense_voice_config = OfflineSenseVoiceModelConfig {
-        model: model_path_str.to_owned(),
-        language: String::new(), // auto-detect
+        model: Some(model_path_str.to_owned()),
+        language: None, // auto-detect
         use_itn: true,
     };
 
     let config = OfflineRecognizerConfig {
         model_config: sherpa_onnx::OfflineModelConfig {
-            sense_voice: Some(sense_voice_config),
+            sense_voice: sense_voice_config,
             tokens: Some(tokens_path_str.to_owned()),
             ..Default::default()
         },
@@ -654,7 +655,7 @@ fn transcribe(model_path: &Path, tokens_path: &Path, samples: &[f32]) -> Result<
     };
 
     let recognizer = OfflineRecognizer::create(&config)
-        .map_err(|e| format!("Could not load the local voice model: {e}"))?;
+        .ok_or_else(|| "Could not load the local voice model.".to_owned())?;
     let stream = recognizer.create_stream()
         .map_err(|e| format!("Could not create transcription stream: {e}"))?;
     stream.accept_waveform(SENSEVOICE_SAMPLE_RATE, samples);
