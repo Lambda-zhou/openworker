@@ -85,7 +85,7 @@ describe("Sidebar group/filter control", () => {
 
     // Open the popover and choose "Group by → Persona".
     fireEvent.click(control);
-    fireEvent.click(await screen.findByText("Persona"));
+    fireEvent.click(await screen.findByText("角色"));
 
     // POSTs the new layout pref.
     await waitFor(() => {
@@ -245,7 +245,7 @@ describe("New-session split button", () => {
 
     // "Manage personas…" opens the persona management surface.
     fireEvent.click(screen.getByLabelText("选择角色"));
-    fireEvent.click(await screen.findByText("Manage personas…"));
+    fireEvent.click(await screen.findByText("管理角色…"));
     expect(baseProps.onManagePersonas).toHaveBeenCalled();
   });
 

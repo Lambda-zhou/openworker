@@ -102,7 +102,7 @@ describe("ApprovalCard — §35 shapes", () => {
 
     // Preview expands INLINE from the tool args (the file doesn't exist yet).
     expect(screen.queryByText(/import json/)).toBeNull();
-    fireEvent.click(screen.getByText("预览"));
+    fireEvent.click(screen.getByText(/预览/));
     expect(screen.getByText(/import json/)).toBeTruthy();
     expect(screen.getByText("展开全部 6 行")).toBeTruthy();
 
@@ -157,7 +157,7 @@ describe("ApprovalCard — §35 shapes", () => {
         onApprove={vi.fn()}
       />,
     );
-    expect(screen.getByText(/运行一个命令 — fetch semiconductor stock data/)).toBeTruthy();
+    expect(screen.getByText(/运行一个命令 — fetch semiconductor stock data/i)).toBeTruthy();
     expect(screen.getByText(/python3 fetch\.py/)).toBeTruthy();
     expect(screen.getByText(/保留在这台电脑上/)).toBeTruthy();
     expect(screen.getByText("始终允许此命令")).toBeTruthy();

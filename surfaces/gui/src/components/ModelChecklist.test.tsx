@@ -38,7 +38,7 @@ function addTyped(id: string) {
   fireEvent.change(screen.getByPlaceholderText("添加其他模型…"), {
     target: { value: id },
   });
-  fireEvent.click(screen.getByText("Add"));
+  fireEvent.click(screen.getByText("添加"));
 }
 
 describe("ModelChecklist add-model family dropdown", () => {

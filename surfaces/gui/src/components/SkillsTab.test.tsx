@@ -109,7 +109,7 @@ describe("SkillsTab", () => {
     ]);
     render(<SkillsTab />);
     await screen.findByText("weekly-report");
-    fireEvent.click(screen.getAllByTitle("Edit")[0]);
+    fireEvent.click(screen.getAllByTitle("编辑")[0]);
     const name = screen.getByLabelText("名称") as HTMLInputElement;
     expect(name.value).toBe("weekly-report");
     expect(name.disabled).toBe(true);
@@ -132,9 +132,9 @@ describe("SkillsTab", () => {
     render(<SkillsTab />);
     await screen.findByText("weekly-report");
     // arm via the trash button (renders "Confirm delete" once armed)
-    fireEvent.click(screen.getByLabelText("Delete weekly-report"));
+    fireEvent.click(screen.getByLabelText("删除 weekly-report"));
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
-    const confirm = await screen.findByText("Confirm delete");
+    const confirm = await screen.findByText("确认删除");
     fireEvent.click(confirm);
     await waitFor(() => {
       expect(calls.some((c) => c.method === "DELETE" && c.url.includes("weekly-report"))).toBe(true);
@@ -148,7 +148,7 @@ describe("SkillsTab", () => {
     ]);
     render(<SkillsTab />);
     await screen.findByText("weekly-report");
-    fireEvent.click(screen.getByLabelText("weekly-report enabled"));
+    fireEvent.click(screen.getByLabelText("weekly-report 已启用"));
     await waitFor(() => {
       const patch = calls.find((c) => c.method === "PATCH");
       expect(patch?.body).toMatchObject({ enabled: false });
@@ -180,11 +180,11 @@ describe("SkillsTab", () => {
     const input = (await screen.findByLabelText("Upload a skill archive")) as HTMLInputElement;
     const file = new File([new Uint8Array([80, 75, 3, 4])], "greet.zip", { type: "application/zip" });
     fireEvent.change(input, { target: { files: [file] } });
-    await screen.findByText("Review before installing");
+    await screen.findByText("安装前请审阅");
     expect(screen.getByText("Say hello warmly.")).toBeTruthy();
     expect(screen.getByText(/notes\.txt/)).toBeTruthy();
     expect(calls.some((c) => c.url.includes("/upload/confirm"))).toBe(false); // preview ≠ install
-    fireEvent.click(screen.getByText("Install skill"));
+    fireEvent.click(screen.getByText("安装技能"));
     await waitFor(() => {
       const confirm = calls.find((c) => c.url.includes("/upload/confirm"));
       expect(confirm?.body).toMatchObject({ token: "t1" });
@@ -199,8 +199,8 @@ describe("SkillsTab", () => {
     // The three doors (§5), each with its teaching subtitle.
     expect(screen.getByText("我自己写")).toBeTruthy();
     expect(screen.getByText("导入文件")).toBeTruthy();
-    expect(screen.getByText(/you review before it installs/)).toBeTruthy();
-    expect(screen.getByText(/asks before adding it to\s+your skills/)).toBeTruthy();
+    expect(screen.getByText(/安装前你可以先审阅/)).toBeTruthy();
+    expect(screen.getByText(/加入你的技能前先征求同意/)).toBeTruthy();
     fireEvent.click(screen.getByText("用 OpenWorker 创建"));
     // Straight to the conversation — the composer is where you describe it (§5.2).
     expect(onCreateSkill).toHaveBeenCalledWith("");

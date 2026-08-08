@@ -84,7 +84,7 @@ describe("Composer voice input (§37)", () => {
     });
     fireEvent.click(stop);
     await screen.findByLabelText("开始听写"); // recording UI wound down
-    const box = screen.getByPlaceholderText(/Ask the coworker/) as HTMLTextAreaElement;
+    const box = screen.getByPlaceholderText(/向 Coworker 提问…/) as HTMLTextAreaElement;
     expect(box.value).toBe("hello from the mic"); // a DRAFT — nothing auto-sent
     expect(document.querySelector(".voice-wave-bars")).toBeNull();
   });
