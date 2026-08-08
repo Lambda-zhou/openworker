@@ -656,12 +656,10 @@ fn transcribe(model_path: &Path, tokens_path: &Path, samples: &[f32]) -> Result<
 
     let recognizer = OfflineRecognizer::create(&config)
         .ok_or_else(|| "Could not load the local voice model.".to_owned())?;
-    let stream = recognizer.create_stream()
-        .map_err(|e| format!("Could not create transcription stream: {e}"))?;
+    let stream = recognizer.create_stream();
     stream.accept_waveform(SENSEVOICE_SAMPLE_RATE, samples);
 
-    recognizer.decode(&stream)
-        .map_err(|e| format!("Could not transcribe audio: {e}"))?;
+    recognizer.decode(&stream);
     let result = stream.get_result();
     Ok(result.text().trim().to_owned())
 }
