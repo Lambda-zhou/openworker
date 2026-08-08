@@ -23,7 +23,7 @@ describe("TurnGroup (Transcript §33)", () => {
     const { container } = render(<Transcript items={TURN} onApprove={vi.fn()} />);
 
     // Collapsed at rest: "2 steps", NO approval count, and no step/narration content visible.
-    expect(screen.getByText("2 steps")).toBeTruthy();
+    expect(screen.getByText("2 步")).toBeTruthy();
     expect(screen.queryByText(/approval/)).toBeNull();
     expect(screen.queryByTestId("turn-narration")).toBeNull();
     expect(screen.queryByText(/Sent a Slack message/)).toBeNull();
@@ -51,7 +51,7 @@ describe("TurnGroup (Transcript §33)", () => {
       { kind: "tool", id: "t1", name: "grep", args: { pattern: "TODO" }, status: "…" },
     ];
     const { container } = render(<Transcript items={items} onApprove={vi.fn()} />);
-    expect(screen.getByText(/Running 1 step…/)).toBeTruthy();
+    expect(screen.getByText(/运行 1 步…/)).toBeTruthy();
     expect(screen.queryByTestId("turn-narration")).toBeNull(); // collapsed by default
     expect(screen.getByTestId("turn-live-line").textContent).toContain("Looking at the repo");
     fireEvent.click(container.querySelector("summary.stepgroup-head")!);
@@ -64,12 +64,12 @@ describe("TurnGroup (Transcript §33)", () => {
       { kind: "approval", name: "run_shell", args: { command: "rm -rf build/" }, reason: "", resolved: "deny" },
     ];
     const { container } = render(<Transcript items={items} onApprove={vi.fn()} />);
-    expect(screen.getByTestId("stepgroup-declined").textContent).toBe("1 declined");
+    expect(screen.getByTestId("stepgroup-declined").textContent).toBe("已拒绝 1 项");
     fireEvent.click(container.querySelector("summary.stepgroup-head")!);
     const ask = screen.getByTestId("turn-ask");
     expect(ask.textContent).toContain("Wanted to run");
     expect(ask.textContent).toContain("rm -rf build/");
-    expect(ask.textContent).toContain("✕ declined");
+    expect(ask.textContent).toContain("✕ 已拒绝");
   });
 
   it("assistant-only turns stay plain bubbles (no disclosure)", () => {
@@ -164,7 +164,7 @@ describe("bubble hover affordances (FB-005)", () => {
     expect(writeText).toHaveBeenCalledWith("post the digest");
     // "Copied" lands only after the clipboard write RESOLVES (a rejected write must
     // not claim success), hence the await.
-    await waitFor(() => expect(copies[0].textContent).toBe("Copied"));
+    await waitFor(() => expect(copies[0].textContent).toBe("已复制"));
     fireEvent.click(copies[1]);
     expect(writeText).toHaveBeenCalledWith("Done — posted to #all-openworker.");
   });
