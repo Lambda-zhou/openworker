@@ -662,7 +662,7 @@ fn transcribe(model_path: &Path, tokens_path: &Path, samples: &[f32]) -> Result<
     recognizer.decode(&stream);
     let result = stream.get_result()
         .ok_or_else(|| "Could not get transcription result.".to_owned())?;
-    Ok(result.text().trim().to_owned())
+    Ok(result.text.trim().to_owned())
 }
 
 #[cfg(test)]
