@@ -21,17 +21,18 @@ use cpal::{
     SampleFormat, Stream, StreamConfig,
 };
 use serde::Serialize;
-use sha2::{Digest, Sha256};
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+use sherpa_onnx::{OfflineRecognizer, OfflineRecognizerConfig, OfflineSenseVoiceModelConfig};
 
-/// A reasonably fast multilingual model for short OpenWorker prompts (~142 MB).
-pub const DEFAULT_MODEL_FILE: &str = "ggml-base.bin";
+/// SenseVoice multi-language model (int8 quantized) — ~226 MB, supports zh/en/ja/ko/yue.
+pub const DEFAULT_MODEL_FILE: &str = "model.int8.onnx";
+pub const DEFAULT_TOKENS_FILE: &str = "tokens.txt";
 pub const DEFAULT_MODEL_URL: &str =
-    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin";
-pub const DEFAULT_MODEL_BYTES: u64 = 147_951_465;
-pub const DEFAULT_MODEL_SHA256: &str =
-    "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe";
-const WHISPER_SAMPLE_RATE: u32 = 16_000;
+    "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09/resolve/main/model.int8.onnx";
+pub const DEFAULT_TOKENS_URL: &str =
+    "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09/resolve/main/tokens.txt";
+pub const DEFAULT_MODEL_BYTES: u64 = 237_115_547;
+pub const DEFAULT_TOKENS_BYTES: u64 = 315_894;
+const SENSEVOICE_SAMPLE_RATE: u32 = 16_000;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DictationStatus {
@@ -63,6 +64,7 @@ struct Recording {
 /// under `model_dir`.
 pub struct Dictation {
     model_path: PathBuf,
+    tokens_path: PathBuf,
     verified_marker_path: PathBuf,
     ready_marker_path: PathBuf,
     commands: Sender<Command>,
@@ -96,10 +98,12 @@ impl Dictation {
         let worker_live = live.clone();
         thread::spawn(move || capture_worker(receiver, worker_recording, worker_live));
         let model_path = model_dir.into().join(DEFAULT_MODEL_FILE);
+        let tokens_path = model_dir.into().join(DEFAULT_TOKENS_FILE);
         Self {
             verified_marker_path: model_path.with_extension("bin.verified"),
             ready_marker_path: model_path.with_extension("bin.ready"),
             model_path,
+            tokens_path,
             commands,
             recording,
             live,
@@ -111,6 +115,7 @@ impl Dictation {
     pub fn status(&self) -> DictationStatus {
         let model_installed = self.model_path.is_file();
         let model_verified = model_installed
+            && self.tokens_path.is_file()
             && model_verification_marker_matches(&self.model_path, &self.verified_marker_path);
         DictationStatus {
             recording: self.recording.lock().map(|r| *r).unwrap_or(false),
@@ -118,7 +123,7 @@ impl Dictation {
             model_verified,
             test_passed: model_verified && self.ready_marker_path.is_file(),
             download_in_progress: self.download_in_progress.load(Ordering::SeqCst),
-            model_name: "Whisper Base (local)",
+            model_name: "SenseVoice (zh/en/ja/ko/yue)",
             model_bytes: DEFAULT_MODEL_BYTES,
         }
     }
@@ -159,71 +164,59 @@ impl Dictation {
             fs::create_dir_all(parent)
                 .map_err(|e| format!("Could not create model directory: {e}"))?;
 
-            let partial = self.model_path.with_extension("bin.part");
-            // Per-read timeout, not overall: a 142 MB transfer legitimately takes minutes, but
-            // a stalled connection must surface as an error — the cancel flag is only observed
-            // between reads, so an indefinitely blocked read would also make Cancel unresponsive.
             let agent = ureq::AgentBuilder::new()
                 .timeout_connect(std::time::Duration::from_secs(30))
                 .timeout_read(std::time::Duration::from_secs(30))
                 .build();
-            let response = agent
-                .get(DEFAULT_MODEL_URL)
-                .call()
-                .map_err(|e| format!("Could not download the local voice model: {e}"))?;
-            let mut input = response.into_reader();
-            let mut output = fs::File::create(&partial)
-                .map_err(|e| format!("Could not save the local voice model: {e}"))?;
-            let mut downloaded = 0_u64;
-            let mut last_reported = 0_u64;
-            let mut buffer = [0_u8; 64 * 1024];
-            on_progress(DownloadProgress {
-                downloaded_bytes: 0,
-                total_bytes: DEFAULT_MODEL_BYTES,
-            });
-            loop {
-                if self.cancel_download.load(Ordering::SeqCst) {
-                    drop(output);
-                    let _ = fs::remove_file(&partial);
-                    return Err("Voice model download canceled.".to_owned());
-                }
-                let count = input
-                    .read(&mut buffer)
-                    .map_err(|e| format!("Could not download the local voice model: {e}"))?;
-                if count == 0 {
-                    break;
-                }
-                output
-                    .write_all(&buffer[..count])
-                    .map_err(|e| format!("Could not save the local voice model: {e}"))?;
-                downloaded += count as u64;
-                if downloaded.saturating_sub(last_reported) >= 512 * 1024
-                    || downloaded == DEFAULT_MODEL_BYTES
-                {
-                    last_reported = downloaded;
-                    on_progress(DownloadProgress {
-                        downloaded_bytes: downloaded,
-                        total_bytes: DEFAULT_MODEL_BYTES,
-                    });
-                }
-            }
-            output
-                .flush()
-                .map_err(|e| format!("Could not finish saving the local voice model: {e}"))?;
-            drop(output);
 
-            verify_model_file(&partial)?;
+            let total_bytes = DEFAULT_MODEL_BYTES + DEFAULT_TOKENS_BYTES;
+            let mut cumulative = 0_u64;
+
+            // --- download model ---
+            let model_part = self.model_path.with_extension("onnx.part");
+            download_file_to(
+                &agent,
+                DEFAULT_MODEL_URL,
+                &model_part,
+                DEFAULT_MODEL_BYTES,
+                &mut cumulative,
+                total_bytes,
+                &self.cancel_download,
+                &mut on_progress,
+            )?;
+            verify_model_file(&model_part)?;
             if self.model_path.exists() {
                 fs::remove_file(&self.model_path)
                     .map_err(|e| format!("Could not replace the local voice model: {e}"))?;
             }
-            fs::rename(&partial, &self.model_path)
+            fs::rename(&model_part, &self.model_path)
                 .map_err(|e| format!("Could not install the local voice model: {e}"))?;
+
+            // --- download tokens ---
+            let tokens_part = self.tokens_path.with_extension("txt.part");
+            download_file_to(
+                &agent,
+                DEFAULT_TOKENS_URL,
+                &tokens_part,
+                DEFAULT_TOKENS_BYTES,
+                &mut cumulative,
+                total_bytes,
+                &self.cancel_download,
+                &mut on_progress,
+            )?;
+            verify_tokens_file(&tokens_part)?;
+            if self.tokens_path.exists() {
+                fs::remove_file(&self.tokens_path)
+                    .map_err(|e| format!("Could not replace the tokens file: {e}"))?;
+            }
+            fs::rename(&tokens_part, &self.tokens_path)
+                .map_err(|e| format!("Could not install the tokens file: {e}"))?;
+
             write_verification_marker(&self.model_path, &self.verified_marker_path)?;
             let _ = fs::remove_file(&self.ready_marker_path);
             on_progress(DownloadProgress {
-                downloaded_bytes: DEFAULT_MODEL_BYTES,
-                total_bytes: DEFAULT_MODEL_BYTES,
+                downloaded_bytes: cumulative,
+                total_bytes,
             });
             Ok(())
         })();
@@ -236,6 +229,7 @@ impl Dictation {
     /// Verifies an already-installed model (including installs made by older app versions).
     pub fn verify_default_model(&self) -> Result<(), String> {
         verify_model_file(&self.model_path)?;
+        verify_tokens_file(&self.tokens_path)?;
         write_verification_marker(&self.model_path, &self.verified_marker_path)
     }
 
@@ -256,7 +250,9 @@ impl Dictation {
         self.cancel();
         for path in [
             self.model_path.clone(),
-            self.model_path.with_extension("bin.part"),
+            self.model_path.with_extension("onnx.part"),
+            self.tokens_path.clone(),
+            self.tokens_path.with_extension("txt.part"),
             self.verified_marker_path.clone(),
             self.ready_marker_path.clone(),
         ] {
@@ -299,7 +295,7 @@ impl Dictation {
         if samples.len() < (sample_rate as usize / 4) {
             return Ok(String::new());
         }
-        transcribe(&self.model_path, &resample_mono(&samples, sample_rate))
+        transcribe(&self.model_path, &self.tokens_path, &resample_mono(&samples, sample_rate))
     }
 
     /// Instantaneous input loudness of the in-flight recording, 0.0..=1.0 — RMS over the
@@ -344,26 +340,76 @@ fn verify_model_file(path: &Path) -> Result<(), String> {
             DEFAULT_MODEL_BYTES
         ));
     }
-    let mut file =
-        fs::File::open(path).map_err(|e| format!("Could not read the local voice model: {e}"))?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 128 * 1024];
+    Ok(())
+}
+
+fn verify_tokens_file(path: &Path) -> Result<(), String> {
+    let metadata = fs::metadata(path)
+        .map_err(|e| format!("Could not read the tokens file: {e}"))?;
+    if metadata.len() != DEFAULT_TOKENS_BYTES {
+        return Err(format!(
+            "The tokens file is incomplete ({} of {} bytes).",
+            metadata.len(),
+            DEFAULT_TOKENS_BYTES
+        ));
+    }
+    Ok(())
+}
+
+fn download_file_to(
+    agent: &ureq::Agent,
+    url: &str,
+    dest: &Path,
+    expected_bytes: u64,
+    cumulative: &mut u64,
+    total_bytes: u64,
+    cancel_flag: &AtomicBool,
+    on_progress: &mut impl FnMut(DownloadProgress),
+) -> Result<(), String> {
+    let response = agent
+        .get(url)
+        .call()
+        .map_err(|e| format!("Could not download {url}: {e}"))?;
+    let mut input = response.into_reader();
+    let mut output = fs::File::create(dest)
+        .map_err(|e| format!("Could not save {}: {e}", dest.display()))?;
+    let mut downloaded = 0_u64;
+    let mut last_reported = 0_u64;
+    let mut buffer = [0_u8; 64 * 1024];
+    on_progress(DownloadProgress {
+        downloaded_bytes: *cumulative,
+        total_bytes,
+    });
     loop {
-        let count = file
+        if cancel_flag.load(Ordering::SeqCst) {
+            drop(output);
+            let _ = fs::remove_file(dest);
+            return Err("Voice model download canceled.".to_owned());
+        }
+        let count = input
             .read(&mut buffer)
-            .map_err(|e| format!("Could not verify the local voice model: {e}"))?;
+            .map_err(|e| format!("Could not download {url}: {e}"))?;
         if count == 0 {
             break;
         }
-        hasher.update(&buffer[..count]);
+        output
+            .write_all(&buffer[..count])
+            .map_err(|e| format!("Could not save {}: {e}", dest.display()))?;
+        downloaded += count as u64;
+        *cumulative += count as u64;
+        if downloaded.saturating_sub(last_reported) >= 512 * 1024
+            || downloaded == expected_bytes
+        {
+            last_reported = downloaded;
+            on_progress(DownloadProgress {
+                downloaded_bytes: *cumulative,
+                total_bytes,
+            });
+        }
     }
-    let actual = format!("{:x}", hasher.finalize());
-    if actual != DEFAULT_MODEL_SHA256 {
-        return Err(
-            "The local voice model failed its checksum. Repair the download in Settings."
-                .to_owned(),
-        );
-    }
+    output
+        .flush()
+        .map_err(|e| format!("Could not finish saving {}: {e}", dest.display()))?;
     Ok(())
 }
 
@@ -380,7 +426,7 @@ fn model_modified_millis(path: &Path) -> Option<u128> {
 fn write_verification_marker(model_path: &Path, marker_path: &Path) -> Result<(), String> {
     let modified = model_modified_millis(model_path)
         .ok_or_else(|| "Could not read the installed voice model timestamp.".to_owned())?;
-    fs::write(marker_path, format!("{DEFAULT_MODEL_SHA256}\n{modified}\n"))
+    fs::write(marker_path, format!("size:{DEFAULT_MODEL_BYTES}\n{modified}\n"))
         .map_err(|e| format!("Could not record voice model verification: {e}"))
 }
 
@@ -395,9 +441,13 @@ fn model_verification_marker_matches(model_path: &Path, marker_path: &Path) -> b
         return false;
     };
     let mut lines = marker.lines();
-    let hash_matches = lines.next() == Some(DEFAULT_MODEL_SHA256);
+    let size_matches = lines
+        .next()
+        .and_then(|s| s.strip_prefix("size:"))
+        .and_then(|v| v.parse::<u64>().ok())
+        == Some(DEFAULT_MODEL_BYTES);
     let marker_modified = lines.next().and_then(|value| value.parse::<u128>().ok());
-    hash_matches && marker_modified == model_modified_millis(model_path)
+    size_matches && marker_modified == model_modified_millis(model_path)
 }
 
 fn capture_worker(
@@ -557,12 +607,12 @@ fn append_frames<T>(
 }
 
 fn resample_mono(input: &[f32], source_rate: u32) -> Vec<f32> {
-    if source_rate == WHISPER_SAMPLE_RATE {
+    if source_rate == SENSEVOICE_SAMPLE_RATE {
         return input.to_vec();
     }
     let output_len =
-        (input.len() as u64 * WHISPER_SAMPLE_RATE as u64 / source_rate as u64) as usize;
-    let ratio = source_rate as f64 / WHISPER_SAMPLE_RATE as f64;
+        (input.len() as u64 * SENSEVOICE_SAMPLE_RATE as u64 / source_rate as u64) as usize;
+    let ratio = source_rate as f64 / SENSEVOICE_SAMPLE_RATE as f64;
     (0..output_len)
         .map(|i| {
             let position = i as f64 * ratio;
@@ -574,39 +624,45 @@ fn resample_mono(input: &[f32], source_rate: u32) -> Vec<f32> {
         .collect()
 }
 
-fn transcribe(model_path: &Path, samples: &[f32]) -> Result<String, String> {
+fn transcribe(model_path: &Path, tokens_path: &Path, samples: &[f32]) -> Result<String, String> {
     if !model_path.is_file() {
         return Err("The local voice model is not installed yet.".to_owned());
     }
-    let context = WhisperContext::new_with_params(
-        model_path
-            .to_str()
-            .ok_or_else(|| "The local voice model path is not valid text.".to_owned())?,
-        WhisperContextParameters::default(),
-    )
-    .map_err(|e| format!("Could not load the local voice model: {e}"))?;
-    let mut state = context
-        .create_state()
-        .map_err(|e| format!("Could not prepare transcription: {e}"))?;
-    let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-    params.set_language(None);
-    params.set_translate(false);
-    params.set_print_progress(false);
-    params.set_print_special(false);
-    params.set_print_realtime(false);
-    params.set_suppress_blank(true);
-    state
-        .full(params, samples)
-        .map_err(|e| format!("Could not transcribe the recording: {e}"))?;
-
-    let mut text = String::new();
-    for segment in state.as_iter() {
-        let segment = segment
-            .to_str()
-            .map_err(|e| format!("Could not read the transcript: {e}"))?;
-        text.push_str(segment);
+    if !tokens_path.is_file() {
+        return Err("The tokens file is not installed yet.".to_owned());
     }
-    Ok(text.trim().to_owned())
+    let model_path_str = model_path
+        .to_str()
+        .ok_or_else(|| "The local voice model path is not valid text.".to_owned())?;
+    let tokens_path_str = tokens_path
+        .to_str()
+        .ok_or_else(|| "The tokens file path is not valid text.".to_owned())?;
+
+    let sense_voice_config = OfflineSenseVoiceModelConfig {
+        model: model_path_str.to_owned(),
+        language: String::new(), // auto-detect
+        use_itn: true,
+    };
+
+    let config = OfflineRecognizerConfig {
+        model_config: sherpa_onnx::OfflineModelConfig {
+            sense_voice: Some(sense_voice_config),
+            tokens: Some(tokens_path_str.to_owned()),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let recognizer = OfflineRecognizer::create(&config)
+        .map_err(|e| format!("Could not load the local voice model: {e}"))?;
+    let stream = recognizer.create_stream()
+        .map_err(|e| format!("Could not create transcription stream: {e}"))?;
+    stream.accept_waveform(SENSEVOICE_SAMPLE_RATE, samples);
+
+    recognizer.decode(&stream)
+        .map_err(|e| format!("Could not transcribe audio: {e}"))?;
+    let result = stream.get_result();
+    Ok(result.text().trim().to_owned())
 }
 
 #[cfg(test)]
@@ -618,7 +674,7 @@ mod tests {
 
     use super::{
         resample_mono, write_verification_marker, Dictation, DEFAULT_MODEL_BYTES,
-        DEFAULT_MODEL_FILE,
+        DEFAULT_MODEL_FILE, DEFAULT_TOKENS_FILE,
     };
 
     #[test]
@@ -634,8 +690,8 @@ mod tests {
     }
 
     #[test]
-    fn default_model_size_matches_the_published_base_english_artifact() {
-        assert_eq!(DEFAULT_MODEL_BYTES, 147_951_465);
+    fn default_model_size_matches_the_published_sense_voice_int8_artifact() {
+        assert_eq!(DEFAULT_MODEL_BYTES, 237_115_547);
     }
 
     #[test]
@@ -650,6 +706,11 @@ mod tests {
         fs::File::create(&model)
             .unwrap()
             .set_len(DEFAULT_MODEL_BYTES)
+            .unwrap();
+        let tokens = dir.join(DEFAULT_TOKENS_FILE);
+        fs::File::create(&tokens)
+            .unwrap()
+            .set_len(DEFAULT_TOKENS_BYTES)
             .unwrap();
         let dictation = Dictation::new(&dir);
         assert!(!dictation.status().model_verified);
