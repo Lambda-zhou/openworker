@@ -237,7 +237,7 @@ describe("New-session split button", () => {
     expect(w.getByText("Ops")).toBeTruthy();
     expect(w.getByText("Code")).toBeTruthy();
     expect(w.queryByText("Disabled One")).toBeNull();
-    expect(w.getByText("Manage personas…")).toBeTruthy();
+    expect(w.getByText("管理角色…")).toBeTruthy();
 
     // Selecting a persona starts a session as that persona.
     fireEvent.click(w.getByText("Ops"));

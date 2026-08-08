@@ -177,7 +177,7 @@ describe("SkillsTab", () => {
       { match: "/v1/skills", method: "GET", json: { skills: [] } },
     ]);
     render(<SkillsTab />);
-    const input = (await screen.findByLabelText("Upload a skill archive")) as HTMLInputElement;
+    const input = (await screen.findByLabelText("上传技能压缩包")) as HTMLInputElement;
     const file = new File([new Uint8Array([80, 75, 3, 4])], "greet.zip", { type: "application/zip" });
     fireEvent.change(input, { target: { files: [file] } });
     await screen.findByText("安装前请审阅");
