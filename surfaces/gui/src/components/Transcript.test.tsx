@@ -36,12 +36,12 @@ describe("TurnGroup (Transcript §33)", () => {
     fireEvent.click(container.querySelector("summary.stepgroup-head")!);
     expect(screen.getByTestId("turn-narration").textContent).toContain("Checking what merged");
     expect(screen.getByText("runbook.md")).toBeTruthy();
-    expect(screen.getByText(/Sent a Slack message to/)).toBeTruthy();
-    expect(screen.getByText("✓ approved")).toBeTruthy();
+    expect(screen.getByText(/发送了一条 Slack 消息/)).toBeTruthy();
+    expect(screen.getByText("✓ 已批准")).toBeTruthy();
     expect(screen.queryByText("send_message approval")).toBeNull();
 
     // Raw stays one click away: the row's raw toggle reveals args + result verbatim.
-    fireEvent.click(screen.getAllByText("raw")[1]);
+    fireEvent.click(screen.getAllByText("原始数据")[1]);
     expect(container.textContent).toContain('{"ok": true}');
   });
 
@@ -51,7 +51,7 @@ describe("TurnGroup (Transcript §33)", () => {
       { kind: "tool", id: "t1", name: "grep", args: { pattern: "TODO" }, status: "…" },
     ];
     const { container } = render(<Transcript items={items} onApprove={vi.fn()} />);
-    expect(screen.getByText(/运行 1 步…/)).toBeTruthy();
+    expect(screen.getByText(/正在执行 1 步…/)).toBeTruthy();
     expect(screen.queryByTestId("turn-narration")).toBeNull(); // collapsed by default
     expect(screen.getByTestId("turn-live-line").textContent).toContain("Looking at the repo");
     fireEvent.click(container.querySelector("summary.stepgroup-head")!);
@@ -67,7 +67,7 @@ describe("TurnGroup (Transcript §33)", () => {
     expect(screen.getByTestId("stepgroup-declined").textContent).toBe("已拒绝 1 项");
     fireEvent.click(container.querySelector("summary.stepgroup-head")!);
     const ask = screen.getByTestId("turn-ask");
-    expect(ask.textContent).toContain("Wanted to run");
+    expect(ask.textContent).toContain("想要运行");
     expect(ask.textContent).toContain("rm -rf build/");
     expect(ask.textContent).toContain("✕ 已拒绝");
   });
@@ -183,20 +183,20 @@ describe("bubble hover affordances (FB-005)", () => {
 describe("humanizeTool", () => {
   it("prefers run_shell's model-written description and keeps the command as the object", () => {
     const line = humanizeTool("run_shell", { command: "git log --since=yesterday", description: "List yesterday's merges" });
-    expect(line.pre).toBe("Ran ");
+    expect(line.pre).toBe("运行了 ");
     expect(line.obj).toBe("git log --since=yesterday");
     expect(line.post).toContain("list yesterday's merges");
   });
 
   it("falls back to 'Used <tool> — <short args>' for unknown tools", () => {
     const line = humanizeTool("gmail_search_messages", { query: "from:ci" });
-    expect(line.pre).toBe("Used gmail_search_messages");
+    expect(line.pre).toBe("使用了 gmail_search_messages");
     expect(line.post).toContain("query=from:ci");
   });
 
   it("summarizes todo_write by its single item and status", () => {
     const line = humanizeTool("todo_write", { todos: [{ content: "Post the digest", status: "in_progress" }] });
-    expect(line.pre).toBe("Updated the plan — ");
+    expect(line.pre).toBe("更新了计划 — ");
     expect(line.obj).toContain("Post the digest");
     expect(line.post).toBe(" → in progress");
   });

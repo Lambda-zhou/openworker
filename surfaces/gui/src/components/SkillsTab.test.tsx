@@ -155,8 +155,8 @@ describe("SkillsTab", () => {
     });
     const status = await screen.findByRole("status");
     expect(status.textContent).toContain("weekly-report"); // name-first — WHICH skill
-    expect(status.textContent).toContain("turned off everywhere");
-    expect(status.textContent).toContain("clean slate"); // the guaranteed remedy, in place
+    expect(status.textContent).toContain("已在所有地方关闭");
+    expect(status.textContent).toContain("完全干净的环境"); // the guaranteed remedy, in place
   });
 
   it("upload shows the parsed preview and installs nothing until confirmed", async () => {
@@ -230,7 +230,7 @@ describe("SkillsTab", () => {
     fireEvent.click(screen.getByText("保存技能"));
     const status = await screen.findByRole("status");
     expect(status.textContent).toContain("greet"); // name-first — WHICH skill
-    expect(status.textContent).toContain("can now use it in every conversation");
+    expect(status.textContent).toContain("现在可以在每个对话中使用它了");
   });
 
   it("the list is the page: no standing add-surfaces, no drafting remnants", async () => {
@@ -279,7 +279,7 @@ describe("SkillsTab — rich-skill disclosure (§6)", () => {
     ]);
     render(<SkillsTab />);
     const note = await screen.findByTitle("显示文件夹");
-    expect(note.textContent).toContain("3 files");
+    expect(note.textContent).toContain("3 个文件");
     // The one-file skill carries no count at all — only rich skills are marked.
     expect(screen.getAllByTitle("显示文件夹")).toHaveLength(1);
   });
