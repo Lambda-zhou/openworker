@@ -74,9 +74,9 @@ describe("ApprovalCard — standing scoped approvals (§25)", () => {
     );
     const grants = screen.getByTestId("approval-grants");
     expect(grants.textContent).toContain("slack:T1/C1");
-    expect(grants.textContent).toContain("always allowed once you approve");
+    expect(grants.textContent).toContain("批准后始终允许");
     expect(grants.textContent).toContain("rohit/agent-platform");
-    expect(grants.textContent).toContain("read-only");
+    expect(grants.textContent).toContain("只读");
     // The raw permissions JSON must not also dump into the args line.
     expect(screen.queryByText(/permissions=/)).toBeNull();
   });
@@ -96,17 +96,17 @@ describe("ApprovalCard — §35 shapes", () => {
       />,
     );
     const row = screen.getByTestId("approval-row");
-    expect(row.textContent).toContain("写入文件");
+    expect(row.textContent).toContain("写入");
     expect(row.textContent).toContain("fetch_data.py");
     expect(screen.queryByText(/Permission required/i)).toBeNull();
 
     // Preview expands INLINE from the tool args (the file doesn't exist yet).
     expect(screen.queryByText(/import json/)).toBeNull();
-    fireEvent.click(screen.getByText(/preview/));
+    fireEvent.click(screen.getByText("预览"));
     expect(screen.getByText(/import json/)).toBeTruthy();
-    expect(screen.getByText("show all 6 lines")).toBeTruthy();
+    expect(screen.getByText("展开全部 6 行")).toBeTruthy();
 
-    fireEvent.click(screen.getByText("Allow"));
+    fireEvent.click(screen.getByText("允许一次"));
     expect(onApprove).toHaveBeenCalledWith("once");
   });
 
@@ -120,8 +120,8 @@ describe("ApprovalCard — §35 shapes", () => {
         onApprove={vi.fn()}
       />,
     );
-    expect(screen.getByText(/Send a file to/).textContent).toContain("C9");
-    expect(screen.getByText(/leaves this computer → Slack/)).toBeTruthy();
+    expect(screen.getByText(/发送一个文件/).textContent).toContain("C9");
+    expect(screen.getByText(/离开这台电脑 → Slack/)).toBeTruthy();
     expect(screen.getByText(/report\.pdf/)).toBeTruthy();
     expect(screen.getByText(/here you go/)).toBeTruthy();
     expect(screen.getByText("允许一次")).toBeTruthy();
@@ -135,9 +135,9 @@ describe("ApprovalCard — §35 shapes", () => {
 
     const prev = document.querySelector(".approval-prev") as HTMLElement;
     expect(prev.textContent!.length).toBeLessThan(500);
-    fireEvent.click(screen.getByText("show the full message"));
+    fireEvent.click(screen.getByText("查看完整消息"));
     expect(document.querySelector(".approval-prev")!.textContent!.length).toBeGreaterThan(1000);
-    expect(screen.getByText("show less")).toBeTruthy();
+    expect(screen.getByText("收起")).toBeTruthy();
   });
 
   it("short send_message text keeps the inline quote (no preview box)", () => {
@@ -157,7 +157,7 @@ describe("ApprovalCard — §35 shapes", () => {
         onApprove={vi.fn()}
       />,
     );
-    expect(screen.getByText(/运行命令 — fetch semiconductor stock data/)).toBeTruthy();
+    expect(screen.getByText(/运行一个命令 — fetch semiconductor stock data/)).toBeTruthy();
     expect(screen.getByText(/python3 fetch\.py/)).toBeTruthy();
     expect(screen.getByText(/保留在这台电脑上/)).toBeTruthy();
     expect(screen.getByText("始终允许此命令")).toBeTruthy();
@@ -239,9 +239,9 @@ describe("ApprovalCard — save_skill (SKILLS-SPEC §5.2)", () => {
   it("shows name-first title, description, instructions, and every bundled file", () => {
     render(<ApprovalCard item={skillApproval()} onApprove={vi.fn()} />);
     expect(screen.getByText("weekly-github-report")).toBeTruthy(); // bold obj in the title
-    expect(screen.getAllByText(/to your skills/).length).toBeGreaterThan(0); // title + footer
+    expect(screen.getAllByText(/添加到你的技能/).length).toBeGreaterThan(0); // title + footer
     // The corner answers WHERE; the footer answers what approving means (§5.2 review round).
-    expect(screen.getByText("saves to Settings ▸ Skills")).toBeTruthy();
+    expect(screen.getByText("保存到 设置 ▸ 技能")).toBeTruthy();
     expect(screen.getByText(/此后可在每个对话中使用/)).toBeTruthy();
     expect(
       screen.getByText("Create a concise Monday status report from GitHub activity."),
@@ -290,7 +290,7 @@ describe("InboxItemCard — parked save_skill proposals (SKILLS-SPEC §5.2)", ()
   it("wears the same review surface and button copy as the live card", () => {
     const onResolve = vi.fn();
     render(<InboxItemCard item={parked()} onResolve={onResolve} />);
-    expect(screen.getByText("saves to Settings ▸ Skills")).toBeTruthy();
+    expect(screen.getByText("保存到 设置 ▸ 技能")).toBeTruthy();
     expect(
       screen.getByText("Create a concise Monday status report from GitHub activity."),
     ).toBeTruthy();

@@ -164,7 +164,7 @@ function Buttons({
   onApprove,
   runTask,
   primaryLabel,
-  denyLabel = "Deny",
+  denyLabel = "拒绝",
 }: {
   item: ApprovalItem;
   onApprove: (decision: ApprovalDecision) => void;
@@ -253,7 +253,7 @@ export function ApprovalCard({
             </button>
           )}
           <span className="spacer" />
-          <Buttons item={item} onApprove={onApprove} runTask={runTask} primaryLabel="Allow" />
+          <Buttons item={item} onApprove={onApprove} runTask={runTask} primaryLabel={approvalActionLabels(item.name).allow} />
         </div>
         {peek && content && <PreviewBlock text={content} />}
         {reason && <div className="approval-reason">{reason}</div>}
