@@ -24,13 +24,13 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
-/// A reasonably fast English model for short OpenWorker prompts (~142 MB).
-pub const DEFAULT_MODEL_FILE: &str = "ggml-base.en.bin";
+/// A reasonably fast multilingual model for short OpenWorker prompts (~142 MB).
+pub const DEFAULT_MODEL_FILE: &str = "ggml-base.bin";
 pub const DEFAULT_MODEL_URL: &str =
-    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin";
-pub const DEFAULT_MODEL_BYTES: u64 = 147_964_211;
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin";
+pub const DEFAULT_MODEL_BYTES: u64 = 147_951_465;
 pub const DEFAULT_MODEL_SHA256: &str =
-    "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002";
+    "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe";
 const WHISPER_SAMPLE_RATE: u32 = 16_000;
 
 #[derive(Debug, Clone, Serialize)]
@@ -118,7 +118,7 @@ impl Dictation {
             model_verified,
             test_passed: model_verified && self.ready_marker_path.is_file(),
             download_in_progress: self.download_in_progress.load(Ordering::SeqCst),
-            model_name: "Whisper Base English (local)",
+            model_name: "Whisper Base (local)",
             model_bytes: DEFAULT_MODEL_BYTES,
         }
     }
@@ -589,7 +589,7 @@ fn transcribe(model_path: &Path, samples: &[f32]) -> Result<String, String> {
         .create_state()
         .map_err(|e| format!("Could not prepare transcription: {e}"))?;
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-    params.set_language(Some("en"));
+    params.set_language(None);
     params.set_translate(false);
     params.set_print_progress(false);
     params.set_print_special(false);
@@ -635,7 +635,7 @@ mod tests {
 
     #[test]
     fn default_model_size_matches_the_published_base_english_artifact() {
-        assert_eq!(DEFAULT_MODEL_BYTES, 147_964_211);
+        assert_eq!(DEFAULT_MODEL_BYTES, 147_951_465);
     }
 
     #[test]

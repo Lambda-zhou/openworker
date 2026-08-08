@@ -308,9 +308,9 @@ function VoiceInputSection() {
             <div className="p-4 flex items-center gap-3">
               <div className="w-9 h-9 rounded-lg bg-accentSoft text-accent grid place-items-center font-semibold">W</div>
               <div className="min-w-0 flex-1">
-                <div className="text-[13.5px] font-medium">Whisper Base · 英语</div>
+                <div className="text-[13.5px] font-medium">Whisper Base · 多语言</div>
                 <div className="text-[12px] text-muted mt-0.5">
-                  {status?.model_verified ? `已安装并校验 · ${formatBytes(status.model_bytes)}` : `本地语音模型 · ${formatBytes(status?.model_bytes || 147_964_211)}`}
+                  {status?.model_verified ? `已安装并校验 · ${formatBytes(status.model_bytes)}` : `本地语音模型 · ${formatBytes(status?.model_bytes || 147_951_465)}`}
                 </div>
               </div>
               {status?.model_verified ? (
